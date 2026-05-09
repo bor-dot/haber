@@ -460,7 +460,7 @@ async function fetchArticleImage(url) {
   try {
     const response = await fetch(url, {
       headers: REQUEST_HEADERS,
-      signal: AbortSignal.timeout(3000),
+      signal: AbortSignal.timeout(5000),
     });
     if (!response.ok) return null;
 
@@ -516,7 +516,7 @@ function parseXML(xml, feed) {
 }
 
 async function enrichMissingImages(items) {
-  const missing = items.filter((item) => !item.image).slice(0, 12);
+  const missing = items.filter((item) => !item.image).slice(0, 3;
   if (missing.length === 0) return;
 
   const images = await Promise.allSettled(
