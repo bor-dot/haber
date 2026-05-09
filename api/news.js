@@ -18,24 +18,43 @@ const REQUEST_HEADERS = {
 };
 
 const CATEGORY_ALIASES = [
-  { value: "Ekonomi", terms: ["ekonomi", "finans", "altin", "borsa", "para", "emekli", "sgk"] },
+  { value: "Ekonomi", terms: ["ekonomi", "finans", "gram altin", "gram altın", "ceyrek altin", "çeyrek altın", "altin fiyat", "altın fiyat", "borsa", "para", "emekli", "sgk"] },
   { value: "Teknoloji", terms: ["teknoloji", "bilisim", "yapay-zeka", "yapay zeka", "siber"] },
-  { value: "Spor", terms: ["spor", "futbol", "basketbol", "galatasaray", "fenerbahce", "besiktas", "trabzonspor", "super-lig", "süper lig"] },
+  { value: "Spor", terms: ["spor", "futbol", "basketbol", "galatasaray", "fenerbahce", "besiktas", "trabzonspor", "super-lig", "süper lig", "okçu", "okçuluk"] },
   { value: "Yaşam", terms: ["yasam", "yaşam", "saglik", "sağlık", "kultur", "kültür", "magazin", "seyahat", "anne"] },
   { value: "Bilim", terms: ["bilim", "bilim-teknoloji", "uzay", "savunma", "arastirma", "araştırma"] },
   { value: "Dünya", terms: ["dunya", "dünya", "world", "avrupa", "abd", "iran", "israil", "gazze", "rusya", "ukrayna", "lubnan", "lübnan"] },
   { value: "Gündem", terms: ["gundem", "gündem", "turkiye", "türkiye", "son-dakika", "son dakika", "politika"] },
 ];
 
+function decodeNumericEntity(match, value, radix) {
+  const codePoint = Number.parseInt(value, radix);
+  if (!Number.isFinite(codePoint)) return match;
+
+  try {
+    return String.fromCodePoint(codePoint);
+  } catch {
+    return match;
+  }
+}
+
 function decodeText(value = "") {
-  return value
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .trim();
+  let text = String(value).replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1");
+
+  for (let i = 0; i < 2; i += 1) {
+    text = text
+      .replace(/&amp;/g, "&")
+      .replace(/&#x([0-9a-f]+);/gi, (match, hex) => decodeNumericEntity(match, hex, 16))
+      .replace(/&#(\d+);/g, (match, decimal) => decodeNumericEntity(match, decimal, 10))
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&#39;/g, "'")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">");
+  }
+
+  return text.trim();
 }
 
 function stripTags(value = "") {
