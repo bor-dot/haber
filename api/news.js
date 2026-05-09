@@ -573,3 +573,61 @@ export default async function handler(req, res) {
     res.status(500).json({ error: error.message });
   }
 }
+
+export default async function handler(req, res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Cache-Control", "no-store, max-age=0");
+
+  try {
+    const results = await Promise.allSettled(
+      FEEDS.map(async (feed) => {
+        try {
+          const response = await fetch(feed.url, {
+            headers: REQUEST_HEADERS,
+            // Zaman aşımını çok daha agresif hale getirdik (2 saniye)
+            signal: AbortSignal.timeout(2000), 
+          });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const raw = await response.text();
+          
+          if (feed.type === "html") return parseHTML(raw, feed);
+          if (feed.type === "jina") return parseJinaMarkdown(raw, feed);
+          return parseXML(raw, feed);
+        } catch (e) {
+          // Bir kaynak hata verirse tüm sistemi çökertmek yerine konsola yazdırıp boş dizi dönüyoruz
+          console.error(`[${feed.source}] Kaynağı Yüklenemedi:`, e.message);
+          return []; 
+        }
+      })
+    );
+
+    let allNews = [];
+    results.forEach((result) => {
+      if (result.status === "fulfilled" && Array.isArray(result.value)) {
+        allNews.push(...result.value);
+      }
+    });
+
+    // Sunucuyu tıkayan resim zenginleştirme fonksiyonunu tamamen kapattık
+    // await enrichMissingImages(allNews); 
+
+    // Haberleri tarihe göre yeniden eskiye sıralıyoruz
+    allNews.sort((a, b) => {
+      const dateA = new Date(a.date);
+      const dateB = new Date(b.date);
+      return (isNaN(dateB) ? 0 : dateB) - (isNaN(dateA) ? 0 : dateA);
+    });
+
+    // Sadece en güncel 100 haberi alıp ID atıyoruz
+    const formattedNews = allNews.slice(0, 100).map((item, index) => ({
+      ...item,
+      id: index + 1,
+      date: formatDisplayDate(new Date(item.date)),
+    }));
+
+    res.status(200).json({ news: formattedNews });
+  } catch (error) {
+    console.error("API Genel Hatası:", error);
+    res.status(500).json({ error: error.message, news: [] });
+  }
+}
