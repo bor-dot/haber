@@ -4,5 +4,9 @@ export interface NewsItem {
   summary: string;
   category: string;
   date: string;
-  image: string;
+  image: string | null;
+  source: string;
+  url: string;
+  isNew?: boolean;
+  hasImageError?: boolean;
 }
