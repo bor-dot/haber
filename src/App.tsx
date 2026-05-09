@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, MouseEvent } from "react";
+import React, { useState, useEffect, useMemo, useId, MouseEvent } from "react";
 import {
   Search,
   Bell,
@@ -25,9 +25,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { NEWS_DATA } from "./constants";
 import { NewsItem } from "./types";
-
 import { translations, Language } from "./translations";
 
 const FALLBACK_IMAGE =
@@ -58,7 +56,17 @@ export default function App() {
     return "TR";
   });
 
+  const uid = useId().replace(/:/g, '');
   const t = translations[lang];
+
+  const categoryMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    translations.TR.categories.forEach((tr, i) => {
+      map[tr] = translations[lang].categories[i];
+      map[translations.EN.categories[i]] = translations[lang].categories[i];
+    });
+    return map;
+  }, [lang]);
 
   const [activeTab, setActiveTab] = useState(() => t.categories[0]);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -76,9 +84,17 @@ export default function App() {
     return true;
   });
 
-  const [newsList, setNewsList] = useState<NewsItem[]>(NEWS_DATA);
+  const [newsList, setNewsList] = useState<NewsItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [selectedNewsId, setSelectedNewsId] = useState<number | null>(null);
-  const [savedNews, setSavedNews] = useState<number[]>([]);
+  const [savedNews, setSavedNews] = useState<number[]>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("savedNews");
+      return saved ? JSON.parse(saved) : [];
+    }
+    return [];
+  });
   const [categoryLimits, setCategoryLimits] = useState<Record<string, number>>({
     Teknoloji: 10,
     Ekonomi: 10,
@@ -93,10 +109,31 @@ export default function App() {
   const [lastUpdateId, setLastUpdateId] = useState<number | null>(null);
   const [detailScrollProgress, setDetailScrollProgress] = useState(0);
 
+  // Initial fetch + refresh every 2 minutes
+  useEffect(() => {
+    const fetchNews = async () => {
+      try {
+        const res = await fetch("/api/news");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        setNewsList(data.news);
+        setFetchError(null);
+      } catch (err: any) {
+        setFetchError(err.message);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchNews();
+    const interval = setInterval(fetchNews, 120000);
+    return () => clearInterval(interval);
+  }, []);
+
   const handleDetailScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
-    const progress = (el.scrollTop / (el.scrollHeight - el.clientHeight)) * 100;
-    setDetailScrollProgress(progress);
+    const denom = el.scrollHeight - el.clientHeight;
+    if (denom <= 0) return;
+    setDetailScrollProgress((el.scrollTop / denom) * 100);
   };
 
   const handleNewsClick = (id: number) => {
@@ -171,14 +208,14 @@ export default function App() {
             ? catItems[Math.floor(Math.random() * catItems.length)]
             : prev[Math.floor(Math.random() * prev.length)];
 
-        const newId = Math.max(...prev.map((n) => n.id), 0) + 1;
+        const newId = prev.reduce((max, n) => n.id > max ? n.id : max, 0) + 1;
         const isBreaking = Math.random() > 0.4;
 
         const itemToAdd: NewsItem = {
           ...baseItem,
           id: newId,
-          category: baseItem.category,
-          title: baseItem.title, 
+          category: getTRCategory(baseItem.category),
+          isNew: true,
           date: lang === "TR" ? "AZ ÖNCE" : "JUST NOW",
           isAiSummarized: false,
           image: `https://picsum.photos/seed/${newId}/800/450`,
@@ -284,6 +321,10 @@ export default function App() {
     localStorage.setItem("lang", lang);
   }, [lang]);
 
+  useEffect(() => {
+    localStorage.setItem("savedNews", JSON.stringify(savedNews));
+  }, [savedNews]);
+
   const toggleLang = () => {
     const nextLang = lang === "TR" ? "EN" : "TR";
     const currentIndex = translations[lang].categories.indexOf(activeTab);
@@ -299,14 +340,7 @@ export default function App() {
     }
   };
 
-  const getCategoryValue = (tab: string) => {
-    const trIndex = translations.TR.categories.indexOf(tab);
-    const enIndex = translations.EN.categories.indexOf(tab);
-    
-    const index = trIndex !== -1 ? trIndex : enIndex;
-    if (index !== -1) return translations[lang].categories[index];
-    return tab;
-  };
+  const getCategoryValue = (tab: string) => categoryMap[tab] ?? tab;
 
   const getTRCategory = (tab: string) => {
     const trIndex = translations.TR.categories.indexOf(tab);
@@ -318,6 +352,18 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#f4f1eb] dark:bg-slate-950 font-sans text-[#0F172A] dark:text-slate-100 selection:bg-red-100 selection:text-red-600 transition-colors duration-300">
+      {isLoading && (
+        <div className="fixed inset-0 z-[200] bg-[#f4f1eb] dark:bg-slate-950 flex flex-col items-center justify-center gap-6">
+          <Loader2 className="animate-spin text-red-600" size={48} />
+          <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">Haberler Yükleniyor...</p>
+        </div>
+      )}
+      {fetchError && !isLoading && newsList.length === 0 && (
+        <div className="fixed inset-0 z-[200] bg-[#f4f1eb] dark:bg-slate-950 flex flex-col items-center justify-center gap-4">
+          <p className="text-red-600 font-black uppercase text-sm">Haberler yüklenemedi</p>
+          <p className="text-slate-400 text-xs">{fetchError}</p>
+        </div>
+      )}
       {/* NAVBAR */}
       <nav className="bg-[#f4f1eb] dark:bg-slate-950 border-b border-[#E2E8F0] dark:border-slate-800 sticky top-0 z-50 h-[65px] flex items-center shadow-sm/50 transition-colors duration-300">
         <div className="max-w-7xl mx-auto px-4 md:px-8 w-full flex items-center justify-between">
@@ -334,7 +380,7 @@ export default function App() {
               >
                 <defs>
                   <linearGradient
-                    id="copper"
+                    id={`${uid}-copper`}
                     x1="0%"
                     y1="100%"
                     x2="100%"
@@ -345,7 +391,7 @@ export default function App() {
                     <stop offset="100%" stopColor="#e37b42" />
                   </linearGradient>
                   <linearGradient
-                    id="glass"
+                    id={`${uid}-glass`}
                     x1="0%"
                     y1="0%"
                     x2="100%"
@@ -356,7 +402,7 @@ export default function App() {
                     <stop offset="100%" stopColor="#7a1400" />
                   </linearGradient>
                   <filter
-                    id="shadow"
+                    id={`${uid}-shadow`}
                     x="-20%"
                     y="-20%"
                     width="140%"
@@ -371,32 +417,32 @@ export default function App() {
                     />
                   </filter>
                 </defs>
-                <circle cx="20" cy="115" r="7.5" fill="url(#copper)" />
+                <circle cx="20" cy="115" r="7.5" fill={`url(#${uid}-copper)`} />
                 <path
                   d="M 6 92 A 25 25 0 0 1 43 130"
                   fill="none"
-                  stroke="url(#copper)"
+                  stroke={`url(#${uid}-copper)`}
                   strokeWidth="7"
                   strokeLinecap="round"
                 />
                 <path
                   d="M -8 70 A 45 45 0 0 1 65 135"
                   fill="none"
-                  stroke="url(#copper)"
+                  stroke={`url(#${uid}-copper)`}
                   strokeWidth="7"
                   strokeLinecap="round"
                 />
                 <path
                   d="M 8 65 Q 150 -50 420 50"
                   fill="none"
-                  stroke="url(#copper)"
+                  stroke={`url(#${uid}-copper)`}
                   strokeWidth="6.5"
                   strokeLinecap="round"
                 />
                 <polygon
                   points="75,70 105,90 75,110"
-                  fill="url(#glass)"
-                  filter="url(#shadow)"
+                  fill={`url(#${uid}-glass)`}
+                  filter={`url(#${uid}-shadow)`}
                   stroke="rgba(255,255,255,0.4)"
                   strokeWidth="1.5"
                 />
@@ -428,7 +474,7 @@ export default function App() {
                       : "text-[#64748B] dark:text-slate-400 hover:text-red-500"
                   } transition-all relative group h-[65px] flex items-center`}
                 >
-                  {tab === "Kaydedilenler" ? (
+                  {tab === t.savedNews ? (
                     <span className="flex items-center gap-1.5">
                       <Bookmark
                         size={12}
@@ -996,6 +1042,7 @@ export default function App() {
                               src={news.image || FALLBACK_IMAGE}
                               className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                               alt={news.title}
+                              loading="lazy"
                               referrerPolicy="no-referrer"
                               onError={() => handleImageError(news.id)}
                             />
@@ -1104,6 +1151,7 @@ export default function App() {
                                   src={news.image || FALLBACK_IMAGE}
                                   className="w-full h-full object-cover opacity-90 transition-transform duration-700 group-hover:scale-110"
                                   alt={news.title}
+                                  loading="lazy"
                                   referrerPolicy="no-referrer"
                                   onError={() => handleImageError(news.id)}
                                 />
@@ -1238,6 +1286,7 @@ export default function App() {
                             src={news.image || FALLBACK_IMAGE}
                             alt={news.title}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 opacity-90 dark:opacity-80 group-hover:opacity-100"
+                            loading="lazy"
                             referrerPolicy="no-referrer"
                             onError={() => handleImageError(news.id)}
                           />
@@ -1315,7 +1364,7 @@ export default function App() {
                   >
                     <defs>
                       <linearGradient
-                        id="copper-foot"
+                        id={`${uid}-copper-foot`}
                         x1="0%"
                         y1="100%"
                         x2="100%"
@@ -1326,7 +1375,7 @@ export default function App() {
                         <stop offset="100%" stopColor="#e37b42" />
                       </linearGradient>
                       <linearGradient
-                        id="glass-foot"
+                        id={`${uid}-glass-foot`}
                         x1="0%"
                         y1="0%"
                         x2="100%"
@@ -1337,7 +1386,7 @@ export default function App() {
                         <stop offset="100%" stopColor="#7a1400" />
                       </linearGradient>
                       <filter
-                        id="shadow-foot"
+                        id={`${uid}-shadow-foot`}
                         x="-20%"
                         y="-20%"
                         width="140%"
@@ -1352,32 +1401,32 @@ export default function App() {
                         />
                       </filter>
                     </defs>
-                    <circle cx="20" cy="115" r="7.5" fill="url(#copper-foot)" />
+                    <circle cx="20" cy="115" r="7.5" fill={`url(#${uid}-copper-foot)`} />
                     <path
                       d="M 6 92 A 25 25 0 0 1 43 130"
                       fill="none"
-                      stroke="url(#copper-foot)"
+                      stroke={`url(#${uid}-copper-foot)`}
                       strokeWidth="7"
                       strokeLinecap="round"
                     />
                     <path
                       d="M -8 70 A 45 45 0 0 1 65 135"
                       fill="none"
-                      stroke="url(#copper-foot)"
+                      stroke={`url(#${uid}-copper-foot)`}
                       strokeWidth="7"
                       strokeLinecap="round"
                     />
                     <path
                       d="M 8 65 Q 150 -50 420 50"
                       fill="none"
-                      stroke="url(#copper-foot)"
+                      stroke={`url(#${uid}-copper-foot)`}
                       strokeWidth="6.5"
                       strokeLinecap="round"
                     />
                     <polygon
                       points="75,70 105,90 75,110"
-                      fill="url(#glass-foot)"
-                      filter="url(#shadow-foot)"
+                      fill={`url(#${uid}-glass-foot)`}
+                      filter={`url(#${uid}-shadow-foot)`}
                       stroke="rgba(255,255,255,0.4)"
                       strokeWidth="1.5"
                     />
