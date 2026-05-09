@@ -734,16 +734,13 @@ export default function App() {
                             {news.summary}
                           </p>
                           <div className="prose dark:prose-invert prose-slate max-w-none">
-                            <p className="text-lg leading-relaxed text-slate-600 dark:text-slate-400">
-                              Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. 
-                            </p>
-                            <p className="text-lg leading-relaxed text-slate-600 dark:text-slate-400">
-                              Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
-                            </p>
-                            <div className="mt-12 pt-6 border-t border-slate-100 dark:border-slate-800">
-                              <button 
+                            <div className="mt-2 p-6 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 flex flex-col items-center gap-4 text-center">
+                              <p className="text-slate-500 dark:text-slate-400 text-sm">
+                                {lang === "TR" ? "Haberin tamamını okumak için kaynağa gidin." : "Visit the source to read the full story."}
+                              </p>
+                              <button
                                 onClick={() => openSource(news.url)}
-                                className="inline-flex items-center gap-2 text-[10px] font-black text-red-600 uppercase tracking-widest hover:bg-slate-50 dark:hover:bg-slate-900 px-4 py-2 rounded-full transition-colors border border-red-600/20"
+                                className="bg-red-600 text-white px-8 py-3 rounded-full font-black uppercase tracking-widest text-[10px] hover:bg-black transition-all shadow-lg shadow-red-600/20 flex items-center gap-2"
                               >
                                 <ArrowRight size={14} /> {t.sourceLink}
                               </button>
