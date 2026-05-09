@@ -9,4 +9,5 @@ export interface NewsItem {
   url: string;
   isNew?: boolean;
   hasImageError?: boolean;
+  isAiSummarized?: boolean;
 }
