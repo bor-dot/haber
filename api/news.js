@@ -11,6 +11,11 @@ const FEEDS = [
   { source: "Haber Türk", category: "Gündem", url: "https://www.haberturk.com/rss" },
   { source: "TRT Haber", category: "Gündem", url: "https://www.trthaber.com/sondakika.rss" },
   { source: "AA Bilim", category: "Bilim", url: "https://www.aa.com.tr/tr/rss/default?cat=bilim-teknoloji" },
+  { source: "Diken", category: "Gündem", url: "https://www.diken.com.tr/feed/" },
+  { source: "bianet", category: "Gündem", url: "https://bianet.org/bianet.rss" },
+  { source: "DW Türkçe", category: "Dünya", url: "https://rss.dw.com/xml/rss-tur-all" },
+  { source: "T24", category: "Gündem", url: "https://t24.com.tr", type: "html" },
+  { source: "Gazete Oksijen", category: "Gündem", url: "https://www.gazeteoksijen.com", type: "html" },
 ];
 
 const REQUEST_HEADERS = {
@@ -19,12 +24,59 @@ const REQUEST_HEADERS = {
 
 const CATEGORY_ALIASES = [
   { value: "Ekonomi", terms: ["ekonomi", "finans", "gram altin", "gram altın", "ceyrek altin", "çeyrek altın", "altin fiyat", "altın fiyat", "borsa", "para", "emekli", "sgk"] },
-  { value: "Teknoloji", terms: ["teknoloji", "bilisim", "yapay-zeka", "yapay zeka", "siber"] },
-  { value: "Spor", terms: ["spor", "futbol", "basketbol", "galatasaray", "fenerbahce", "besiktas", "trabzonspor", "super-lig", "süper lig", "okçu", "okçuluk"] },
-  { value: "Yaşam", terms: ["yasam", "yaşam", "saglik", "sağlık", "kultur", "kültür", "magazin", "seyahat", "anne"] },
-  { value: "Bilim", terms: ["bilim", "bilim-teknoloji", "uzay", "savunma", "arastirma", "araştırma"] },
-  { value: "Dünya", terms: ["dunya", "dünya", "world", "avrupa", "abd", "iran", "israil", "gazze", "rusya", "ukrayna", "lubnan", "lübnan"] },
+  { value: "Teknoloji", terms: ["teknoloji", "bilisim", "bilişim", "yapay-zeka", "yapay zeka", "siber"] },
+  { value: "Spor", terms: ["spor", "futbol", "basketbol", "galatasaray", "fenerbahce", "fenerbahçe", "besiktas", "beşiktaş", "trabzonspor", "super-lig", "süper lig", "okçu", "okçuluk"] },
+  { value: "Yaşam", terms: ["yasam", "yaşam", "saglik", "sağlık", "kultur", "kültür", "kultur-sanat", "kültür-sanat", "magazin", "seyahat", "gastronomi", "sinema", "ekran", "ajanda", "anne"] },
+  { value: "Bilim", terms: ["bilim", "bilim-teknoloji", "bilim-ve-teknoloji", "uzay", "savunma", "arastirma", "araştırma"] },
+  { value: "Dünya", terms: ["dunya", "dünya", "world", "avrupa", "abd", "iran", "israil", "gazze", "rusya", "ukrayna", "lubnan", "lübnan", "new-york-times", "financial-times", "the-economist", "the-athletic"] },
   { value: "Gündem", terms: ["gundem", "gündem", "turkiye", "türkiye", "son-dakika", "son dakika", "politika"] },
+];
+
+const HTML_FEED_RULES = {
+  T24: {
+    host: "t24.com.tr",
+    include: ["/haber/"],
+    maxItems: 24,
+  },
+  "Gazete Oksijen": {
+    host: "gazeteoksijen.com",
+    include: [
+      "/turkiye/",
+      "/dunya/",
+      "/ekonomi/",
+      "/spor/",
+      "/bilim-ve-teknoloji/",
+      "/gastronomi/",
+      "/seyahat/",
+      "/ajanda/",
+      "/ekran/",
+      "/sinema/",
+      "/new-york-times/",
+      "/financial-times/",
+      "/the-economist/",
+      "/the-athletic/",
+    ],
+    maxItems: 24,
+  },
+};
+
+const HTML_TITLE_BLOCKLIST = [
+  "anasayfa",
+  "gundem",
+  "gündem",
+  "politika",
+  "ekonomi",
+  "spor",
+  "dunya",
+  "dünya",
+  "yazarlar",
+  "galeriler",
+  "video",
+  "listeler",
+  "ucretsiz uye ol",
+  "ücretsiz üye ol",
+  "gunun bulteni",
+  "günün bülteni",
 ];
 
 function decodeNumericEntity(match, value, radix) {
@@ -71,9 +123,14 @@ function getAttr(block, tag, attr) {
   return match ? decodeText(match[1]) : "";
 }
 
+function getHtmlAttr(attrs, attr) {
+  const match = attrs.match(new RegExp(`\\s${attr}=["']([^"']+)["']`, "i"));
+  return match ? decodeText(match[1]) : "";
+}
+
 function normalizeUrl(url, baseUrl = "") {
   const clean = decodeText(url).trim();
-  if (!clean) return null;
+  if (!clean || /^(?:javascript|mailto|tel):/i.test(clean)) return null;
   if (clean.startsWith("//")) return `https:${clean}`;
   if (/^https?:\/\//i.test(clean)) return clean;
 
@@ -140,9 +197,20 @@ function getItemCategory(block) {
 }
 
 function parseDate(block) {
-  const rawDate = getTag(block, "pubDate") || getTag(block, "published") || getTag(block, "updated");
+  const rawDate = getTag(block, "pubDate") || getTag(block, "published") || getTag(block, "updated") || getTag(block, "dc:date");
   const date = rawDate ? new Date(rawDate) : new Date();
   return Number.isNaN(date.getTime()) ? new Date() : date;
+}
+
+function formatDisplayDate(date) {
+  const now = new Date();
+  const diffMin = Math.max(0, Math.floor((now - date) / 60000));
+  const diffHour = Math.floor(diffMin / 60);
+
+  if (diffMin < 5) return "AZ ÖNCE";
+  if (diffMin < 60) return `${diffMin} DAKİKA ÖNCE`;
+  if (diffHour < 24) return `${diffHour} SAAT ÖNCE`;
+  return date.toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" });
 }
 
 function parseBlocks(xml, tagName) {
@@ -155,6 +223,129 @@ function parseBlocks(xml, tagName) {
   }
 
   return blocks;
+}
+
+function isAllowedHtmlUrl(url, feed) {
+  const rule = HTML_FEED_RULES[feed.source];
+  if (!rule || !url) return false;
+
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, "");
+    const path = parsed.pathname;
+
+    if (host !== rule.host && !host.endsWith(`.${rule.host}`)) return false;
+    if (rule.include?.length && !rule.include.some((prefix) => path.startsWith(prefix))) return false;
+    if (/\.(?:jpg|jpeg|png|gif|webp|svg|pdf)$/i.test(path)) return false;
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function cleanHtmlTitle(value = "") {
+  let title = stripTags(value)
+    .replace(/^\d{1,2}:\d{2}\s*/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (title.length > 40) {
+    const words = title.split(" ");
+    if (words.length % 2 === 0) {
+      const midpoint = words.length / 2;
+      const firstHalf = words.slice(0, midpoint).join(" ");
+      const secondHalf = words.slice(midpoint).join(" ");
+      if (normalizeForMatch(firstHalf) === normalizeForMatch(secondHalf)) {
+        title = firstHalf;
+      }
+    }
+  }
+
+  return title;
+}
+
+function titleFromAnchor(markup, attrs) {
+  const imgAlt = getAttr(markup, "img", "alt");
+  const heading = markup.match(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/i)?.[1] || "";
+  const candidates = [getHtmlAttr(attrs, "title"), imgAlt, heading, markup];
+
+  for (const candidate of candidates) {
+    const title = cleanHtmlTitle(candidate);
+    if (isUsefulHtmlTitle(title)) return title;
+  }
+
+  return "";
+}
+
+function isUsefulHtmlTitle(title) {
+  const normalized = normalizeForMatch(title);
+  if (title.length < 22) return false;
+  if (title.split(/\s+/).length < 3) return false;
+  if (HTML_TITLE_BLOCKLIST.includes(normalized)) return false;
+  if (/^(?:son dakika|t24|gazete oksijen)$/i.test(title)) return false;
+  return true;
+}
+
+function parseHtmlDate(markup, fallbackOffset) {
+  const text = stripTags(markup);
+  const timeMatch = text.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
+
+  if (timeMatch) {
+    const date = new Date();
+    date.setHours(Number(timeMatch[1]), Number(timeMatch[2]), 0, 0);
+    if (date.getTime() - Date.now() > 30 * 60000) date.setDate(date.getDate() - 1);
+    return date;
+  }
+
+  return new Date(Date.now() - fallbackOffset * 60000);
+}
+
+function parseHTML(html, feed) {
+  const rule = HTML_FEED_RULES[feed.source];
+  const maxItems = rule?.maxItems || 20;
+  const items = [];
+  const seenUrls = new Set();
+  const seenTitles = new Set();
+  const anchorRegex = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
+  let match;
+  let id = 0;
+
+  while ((match = anchorRegex.exec(html)) !== null && items.length < maxItems) {
+    const attrs = match[1];
+    const markup = match[0];
+    const link = normalizeUrl(getHtmlAttr(attrs, "href"), feed.url);
+
+    if (!isAllowedHtmlUrl(link, feed)) continue;
+    if (seenUrls.has(link)) continue;
+
+    const title = titleFromAnchor(markup, attrs);
+    const titleKey = normalizeForMatch(title);
+
+    if (!title || seenTitles.has(titleKey)) continue;
+
+    const date = parseHtmlDate(markup, items.length);
+    const category = inferCategory("", link, title, feed.category);
+    const image = firstImageUrl(markup, link || feed.url);
+
+    seenUrls.add(link);
+    seenTitles.add(titleKey);
+
+    items.push({
+      id: `${feed.source}-${id++}`,
+      title: title.substring(0, 120),
+      summary: title.substring(0, 300),
+      category,
+      date: formatDisplayDate(date),
+      pubDate: date.getTime(),
+      image,
+      source: feed.source,
+      url: link,
+      isNew: Date.now() - date.getTime() < 30 * 60000,
+    });
+  }
+
+  return items;
 }
 
 async function fetchArticleImage(url) {
@@ -196,31 +387,22 @@ function parseXML(xml, feed) {
     const title = stripTags(getTag(block, "title"));
     const description = stripTags(getTag(block, "description") || getTag(block, "summary") || getTag(block, "content"));
     const date = parseDate(block);
-    const now = new Date();
-    const diffMin = Math.floor((now - date) / 60000);
-    const diffHour = Math.floor(diffMin / 60);
     const image = firstImageUrl(block, link || feed.url);
     const category = inferCategory(getItemCategory(block), link, title, feed.category);
 
     if (!title || !link) continue;
-
-    let displayDate;
-    if (diffMin < 5) displayDate = "AZ ÖNCE";
-    else if (diffMin < 60) displayDate = `${diffMin} DAKİKA ÖNCE`;
-    else if (diffHour < 24) displayDate = `${diffHour} SAAT ÖNCE`;
-    else displayDate = date.toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" });
 
     items.push({
       id: `${feed.source}-${id++}`,
       title: title.substring(0, 120),
       summary: description.substring(0, 300),
       category,
-      date: displayDate,
+      date: formatDisplayDate(date),
       pubDate: date.getTime(),
       image,
       source: feed.source,
       url: link,
-      isNew: diffMin < 30,
+      isNew: Date.now() - date.getTime() < 30 * 60000,
     });
   }
 
@@ -254,8 +436,8 @@ export default async function handler(req, res) {
           signal: AbortSignal.timeout(5000),
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const xml = await response.text();
-        return parseXML(xml, feed);
+        const raw = await response.text();
+        return feed.type === "html" ? parseHTML(raw, feed) : parseXML(raw, feed);
       })
     );
 
