@@ -45,7 +45,7 @@ const normalizedCategoryLabels = new Map(
 );
 
 function normalizeLabel(text: string) {
-  return text
+  return decodeEntities(text)
     .toLocaleLowerCase("tr-TR")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -54,13 +54,47 @@ function normalizeLabel(text: string) {
     .trim();
 }
 
+function decodeNumericEntity(match: string, value: string, radix: number) {
+  const codePoint = Number.parseInt(value, radix);
+  if (!Number.isFinite(codePoint)) return match;
+
+  try {
+    return String.fromCodePoint(codePoint);
+  } catch {
+    return match;
+  }
+}
+
+function decodeEntities(value = "") {
+  let text = String(value);
+
+  for (let i = 0; i < 2; i += 1) {
+    text = text
+      .replace(/&amp;/g, "&")
+      .replace(/&#x([0-9a-f]+);/gi, (match, hex) => decodeNumericEntity(match, hex, 16))
+      .replace(/&#(\d+);/g, (match, decimal) => decodeNumericEntity(match, decimal, 10))
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&#39;/g, "'")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">");
+  }
+
+  return text.replace(/\s+/g, " ").trim();
+}
+
 function escapeHtml(value = "") {
-  return value
+  return decodeEntities(value)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function upperTR(value = "") {
+  return decodeEntities(value).toLocaleUpperCase("tr-TR");
 }
 
 function resolveCategoryFromControl(control: Element) {
@@ -92,9 +126,14 @@ function getCategoryAction(target: EventTarget | null) {
   if (!(target instanceof Element)) return null;
 
   const control = target.closest("button, li");
-  if (!control) return null;
+  if (control) return resolveCategoryFromControl(control);
 
-  return resolveCategoryFromControl(control);
+  const logo = target.closest("nav [class*='cursor-pointer']");
+  if (logo && normalizeLabel(logo.textContent || "").includes("sonarat")) {
+    return "home";
+  }
+
+  return null;
 }
 
 function getNativeMain() {
@@ -107,6 +146,18 @@ function ensureCategoryStyles() {
   const style = document.createElement("style");
   style.id = "sonarat-category-style";
   style.textContent = `
+    nav .sonarat-active-tab { color: #dc2626 !important; }
+    nav .sonarat-muted-tab { color: #64748b !important; }
+    .dark nav .sonarat-muted-tab { color: #94a3b8 !important; }
+    nav .sonarat-active-marker {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 4px;
+      background: #dc2626;
+      pointer-events: none;
+    }
     .sonarat-category-view {
       min-height: calc(100vh - 65px);
       background: #f4f1eb;
@@ -134,7 +185,6 @@ function ensureCategoryStyles() {
       font-weight: 900;
       font-size: clamp(24px, 4vw, 42px);
       line-height: 0.95;
-      text-transform: uppercase;
       letter-spacing: 0;
     }
     .sonarat-category-subtitle {
@@ -221,7 +271,6 @@ function ensureCategoryStyles() {
       font-size: clamp(26px, 4vw, 52px);
       line-height: 0.98;
       font-weight: 950;
-      text-transform: uppercase;
       letter-spacing: 0;
     }
     .sonarat-hero-link,
@@ -259,7 +308,6 @@ function ensureCategoryStyles() {
     .sonarat-side-title,
     .sonarat-news-title {
       font-weight: 900;
-      text-transform: uppercase;
       line-height: 1.12;
     }
     .sonarat-side-title {
@@ -296,7 +344,6 @@ function ensureCategoryStyles() {
       text-align: center;
       color: #64748b;
       font-weight: 800;
-      text-transform: uppercase;
       letter-spacing: 0.08em;
     }
     @media (max-width: 900px) {
@@ -335,6 +382,56 @@ function ensureCategoryShell() {
   return shell;
 }
 
+function hideNativeActiveMarkers() {
+  document.querySelectorAll("nav button > *").forEach((child) => {
+    const element = child as HTMLElement;
+    const className = String(element.className || "");
+    if (className.includes("bottom-0") && className.includes("bg-red-600")) {
+      element.style.display = "none";
+    }
+  });
+}
+
+function labelsForAction(action: string) {
+  if (action === "home") return HOME_LABELS.map(normalizeLabel);
+
+  return Object.entries(CATEGORY_LABELS)
+    .filter(([, category]) => category === action)
+    .map(([label]) => normalizeLabel(label));
+}
+
+function isNavigationLabel(label: string) {
+  return (
+    HOME_LABELS.some((home) => normalizeLabel(home) === label) ||
+    normalizedCategoryLabels.has(label)
+  );
+}
+
+function setActiveNavigation(action: string) {
+  ensureCategoryStyles();
+  hideNativeActiveMarkers();
+
+  const activeLabels = labelsForAction(action);
+
+  document.querySelectorAll("nav button, nav li").forEach((control) => {
+    const element = control as HTMLElement;
+    const label = normalizeLabel(element.textContent || "");
+    if (!isNavigationLabel(label)) return;
+
+    const isActive = activeLabels.includes(label);
+    element.classList.toggle("sonarat-active-tab", isActive);
+    element.classList.toggle("sonarat-muted-tab", !isActive);
+    element.querySelectorAll(":scope > .sonarat-active-marker").forEach((marker) => marker.remove());
+
+    const className = String(element.className || "");
+    if (isActive && element.tagName === "BUTTON" && className.includes("h-[65px]")) {
+      const marker = document.createElement("span");
+      marker.className = "sonarat-active-marker";
+      element.appendChild(marker);
+    }
+  });
+}
+
 function hideNativeMobileMenu() {
   document.querySelectorAll("nav div").forEach((element) => {
     const className = String((element as HTMLElement).className || "");
@@ -351,6 +448,7 @@ function showNativeHome() {
   const main = getNativeMain();
   if (main) main.style.display = "";
 
+  setActiveNavigation("home");
   window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "smooth" }));
 }
 
@@ -370,7 +468,7 @@ function newsCard(item: CategoryNewsItem) {
           <span class="sonarat-dot"></span>
           <span>${escapeHtml(item.date || "")}</span>
         </div>
-        <h3 class="sonarat-news-title">${escapeHtml(item.title)}</h3>
+        <h3 class="sonarat-news-title">${escapeHtml(upperTR(item.title))}</h3>
         <span class="sonarat-card-link">Haberi oku →</span>
       </div>
     </article>
@@ -387,7 +485,7 @@ function sideCard(item: CategoryNewsItem) {
           <span class="sonarat-dot"></span>
           <span>${escapeHtml(item.date || "")}</span>
         </div>
-        <h3 class="sonarat-side-title">${escapeHtml(item.title)}</h3>
+        <h3 class="sonarat-side-title">${escapeHtml(upperTR(item.title))}</h3>
       </div>
     </article>
   `;
@@ -401,11 +499,12 @@ function renderLoading(category: string) {
   shell.innerHTML = `
     <div class="sonarat-category-inner">
       <div class="sonarat-category-header">
-        <h1 class="sonarat-category-title">${escapeHtml(category)} <span class="sonarat-category-subtitle">haberleri</span></h1>
+        <h1 class="sonarat-category-title">${escapeHtml(upperTR(category))} <span class="sonarat-category-subtitle">haberleri</span></h1>
       </div>
       <div class="sonarat-category-empty">Yükleniyor...</div>
     </div>
   `;
+  setActiveNavigation(category);
   window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
 }
 
@@ -415,11 +514,13 @@ function renderCategory(category: string, items: CategoryNewsItem[]) {
   const side = rest.slice(0, 4);
   const grid = rest.slice(4, 28);
 
+  setActiveNavigation(category);
+
   if (!hero) {
     shell.innerHTML = `
       <div class="sonarat-category-inner">
         <div class="sonarat-category-header">
-          <h1 class="sonarat-category-title">${escapeHtml(category)} <span class="sonarat-category-subtitle">haberleri</span></h1>
+          <h1 class="sonarat-category-title">${escapeHtml(upperTR(category))} <span class="sonarat-category-subtitle">haberleri</span></h1>
         </div>
         <div class="sonarat-category-empty">Bu kategori için haber bulunamadı.</div>
       </div>
@@ -430,7 +531,7 @@ function renderCategory(category: string, items: CategoryNewsItem[]) {
   shell.innerHTML = `
     <div class="sonarat-category-inner">
       <div class="sonarat-category-header">
-        <h1 class="sonarat-category-title">${escapeHtml(category)} <span class="sonarat-category-subtitle">haberleri</span></h1>
+        <h1 class="sonarat-category-title">${escapeHtml(upperTR(category))} <span class="sonarat-category-subtitle">haberleri</span></h1>
         <div class="sonarat-category-count">${items.length} haber</div>
       </div>
       <section class="sonarat-category-hero">
@@ -442,7 +543,7 @@ function renderCategory(category: string, items: CategoryNewsItem[]) {
               <span class="sonarat-dot"></span>
               <span>${escapeHtml(hero.date || "")}</span>
             </div>
-            <h2 class="sonarat-hero-title">${escapeHtml(hero.title)}</h2>
+            <h2 class="sonarat-hero-title">${escapeHtml(upperTR(hero.title))}</h2>
             <span class="sonarat-hero-link">Haberi oku →</span>
           </div>
         </article>
