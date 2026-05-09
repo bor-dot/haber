@@ -11,7 +11,7 @@ const FEEDS = [
   { source: "Haber Türk", category: "Gündem", url: "https://www.haberturk.com/rss" },
   { source: "TRT Haber", category: "Gündem", url: "https://www.trthaber.com/sondakika.rss" },
   { source: "AA Bilim", category: "Bilim", url: "https://www.aa.com.tr/tr/rss/default?cat=bilim-teknoloji" },
-  { source: "Diken", category: "Gündem", url: "https://www.diken.com.tr/feed/" },
+  { source: "Diken", category: "Gündem", url: "https://www.diken.com.tr", type: "html" },
   { source: "bianet", category: "Gündem", url: "https://bianet.org/bianet.rss" },
   { source: "DW Türkçe", category: "Dünya", url: "https://rss.dw.com/xml/rss-tur-all" },
   { source: "T24", category: "Gündem", url: "https://t24.com.tr", type: "html" },
@@ -33,6 +33,13 @@ const CATEGORY_ALIASES = [
 ];
 
 const HTML_FEED_RULES = {
+  Diken: {
+    host: "diken.com.tr",
+    include: ["/"],
+    exclude: ["/kategori/", "/author/", "/tag/", "/wp-content/", "/feed/"],
+    singleSegment: true,
+    maxItems: 24,
+  },
   T24: {
     host: "t24.com.tr",
     include: ["/haber/"],
@@ -62,6 +69,9 @@ const HTML_FEED_RULES = {
 
 const HTML_TITLE_BLOCKLIST = [
   "anasayfa",
+  "vitrin",
+  "diken",
+  "diken yaramazlara biraz batar",
   "gundem",
   "gündem",
   "politika",
@@ -236,6 +246,11 @@ function isAllowedHtmlUrl(url, feed) {
 
     if (host !== rule.host && !host.endsWith(`.${rule.host}`)) return false;
     if (rule.include?.length && !rule.include.some((prefix) => path.startsWith(prefix))) return false;
+    if (rule.exclude?.some((prefix) => path.startsWith(prefix))) return false;
+    if (rule.singleSegment) {
+      const segments = path.split("/").filter(Boolean);
+      if (segments.length !== 1 || segments[0].length < 18) return false;
+    }
     if (/\.(?:jpg|jpeg|png|gif|webp|svg|pdf)$/i.test(path)) return false;
 
     return true;
