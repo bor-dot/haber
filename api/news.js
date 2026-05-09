@@ -1,4 +1,5 @@
 const FEEDS = [
+  // Mevcut Ana Akım Kaynaklar
   { source: "NTV", category: "Gündem", url: "https://www.ntv.com.tr/son-dakika.rss" },
   { source: "NTV Ekonomi", category: "Ekonomi", url: "https://www.ntv.com.tr/ekonomi.rss" },
   { source: "NTV Spor", category: "Spor", url: "https://www.ntv.com.tr/spor.rss" },
@@ -16,6 +17,29 @@ const FEEDS = [
   { source: "DW Türkçe", category: "Dünya", url: "https://rss.dw.com/xml/rss-tur-all" },
   { source: "T24", category: "Gündem", url: "https://t24.com.tr", type: "html" },
   { source: "Gazete Oksijen", category: "Gündem", url: "https://www.gazeteoksijen.com", type: "html" },
+
+  // --- YENİ EKLENEN TEKNOLOJİ VE BİLİM KAYNAKLARI ---
+  { source: "Webtekno", category: "Teknoloji", url: "https://www.webtekno.com/rss.xml" },
+  { source: "DonanımHaber", category: "Teknoloji", url: "https://www.donanimhaber.com/rss/tum/" },
+  { source: "ShiftDelete", category: "Teknoloji", url: "https://shiftdelete.net/feed" },
+  { source: "Chip Online", category: "Teknoloji", url: "https://www.chip.com.tr/rss" },
+  { source: "TÜBİTAK Bilim Genç", category: "Bilim", url: "https://bilimgenc.tubitak.gov.tr/rss.xml" }
+];
+
+const REQUEST_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (compatible; SonaratBot/1.0)",
+};
+
+const CATEGORY_ALIASES = [
+  { value: "Ekonomi", terms: ["ekonomi", "finans", "gram altin", "gram altın", "ceyrek altin", "çeyrek altın", "altin fiyat", "altın fiyat", "borsa", "para", "emekli", "sgk"] },
+  // Teknoloji kategorisi için yeni kaynakları kusursuz ayıklayacak anahtar kelimeler eklendi
+  { value: "Teknoloji", terms: ["teknoloji", "bilisim", "bilişim", "yapay-zeka", "yapay zeka", "siber", "donanım", "yazılım", "mobil", "internet", "akıllı telefon"] },
+  { value: "Spor", terms: ["spor", "futbol", "basketbol", "galatasaray", "fenerbahce", "fenerbahçe", "besiktas", "beşiktaş", "trabzonspor", "super-lig", "süper lig", "okçu", "okçuluk"] },
+  { value: "Yaşam", terms: ["yasam", "yaşam", "saglik", "sağlık", "kultur", "kültür", "kultur-sanat", "kültür-sanat", "magazin", "seyahat", "gastronomi", "sinema", "ekran", "ajanda", "anne"] },
+  // Bilim kategorisi TÜBİTAK haberlerini kapsayacak şekilde genişletildi
+  { value: "Bilim", terms: ["bilim", "bilim-teknoloji", "bilim-ve-teknoloji", "uzay", "savunma", "arastirma", "araştırma", "tübitak", "fizik", "kimya", "biyoloji"] },
+  { value: "Dünya", terms: ["dunya", "dünya", "world", "avrupa", "abd", "iran", "israil", "gazze", "rusya", "ukrayna", "lubnan", "lübnan", "new-york-times", "financial-times", "the-economist", "the-athletic"] },
+  { value: "Gündem", terms: ["gundem", "gündem", "turkiye", "türkiye", "son-dakika", "son dakika", "politika"] },
 ];
 
 const REQUEST_HEADERS = {
