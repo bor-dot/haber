@@ -5,6 +5,8 @@ const FEEDS = [
   { source: "NTV Teknoloji", category: "Teknoloji", url: "https://www.ntv.com.tr/teknoloji.rss" },
   { source: "BBC Türkçe", category: "Dünya", url: "https://feeds.bbci.co.uk/turkce/rss.xml" },
   { source: "Anadolu Ajansı", category: "Gündem", url: "https://www.aa.com.tr/tr/rss/default?cat=guncel" },
+  { source: "AA Spor", category: "Spor", url: "https://www.aa.com.tr/tr/rss/default?cat=spor" },
+  { source: "AA Ekonomi", category: "Ekonomi", url: "https://www.aa.com.tr/tr/rss/default?cat=ekonomi" },
   { source: "Sözcü", category: "Gündem", url: "https://www.sozcu.com.tr/rss/anasayfa.xml" },
   { source: "Haber Türk", category: "Gündem", url: "https://www.haberturk.com/rss" },
   { source: "TRT Haber", category: "Gündem", url: "https://www.trthaber.com/sondakika.rss" },
@@ -223,7 +225,7 @@ async function enrichMissingImages(items) {
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Cache-Control", "s-maxage=120, stale-while-revalidate=60");
+  res.setHeader("Cache-Control", "no-store, max-age=0");
 
   try {
     const results = await Promise.allSettled(
@@ -247,8 +249,17 @@ export default async function handler(req, res) {
     await enrichMissingImages(allNews);
 
     const numbered = allNews.map((item, idx) => ({ ...item, id: idx + 1 }));
+    const categoryCounts = numbered.reduce((counts, item) => {
+      counts[item.category] = (counts[item.category] || 0) + 1;
+      return counts;
+    }, {});
 
-    res.status(200).json({ news: numbered, count: numbered.length, updatedAt: new Date().toISOString() });
+    res.status(200).json({
+      news: numbered,
+      count: numbered.length,
+      categoryCounts,
+      updatedAt: new Date().toISOString(),
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
