@@ -7,13 +7,23 @@ const FEEDS = [
   { source: "Anadolu Ajansı", category: "Gündem", url: "https://www.aa.com.tr/tr/rss/default?cat=guncel" },
   { source: "Sözcü", category: "Gündem", url: "https://www.sozcu.com.tr/rss/anasayfa.xml" },
   { source: "Haber Türk", category: "Gündem", url: "https://www.haberturk.com/rss" },
-  { source: "TRT Haber", category: "Dünya", url: "https://www.trthaber.com/sondakika.rss" },
+  { source: "TRT Haber", category: "Gündem", url: "https://www.trthaber.com/sondakika.rss" },
   { source: "AA Bilim", category: "Bilim", url: "https://www.aa.com.tr/tr/rss/default?cat=bilim-teknoloji" },
 ];
 
 const REQUEST_HEADERS = {
   "User-Agent": "Mozilla/5.0 (compatible; SonaratBot/1.0)",
 };
+
+const CATEGORY_ALIASES = [
+  { value: "Ekonomi", terms: ["ekonomi", "finans", "altin", "borsa", "para", "emekli", "sgk"] },
+  { value: "Teknoloji", terms: ["teknoloji", "bilisim", "yapay-zeka", "yapay zeka", "siber"] },
+  { value: "Spor", terms: ["spor", "futbol", "basketbol", "galatasaray", "fenerbahce", "besiktas", "trabzonspor", "super-lig", "süper lig"] },
+  { value: "Yaşam", terms: ["yasam", "yaşam", "saglik", "sağlık", "kultur", "kültür", "magazin", "seyahat", "anne"] },
+  { value: "Bilim", terms: ["bilim", "bilim-teknoloji", "uzay", "savunma", "arastirma", "araştırma"] },
+  { value: "Dünya", terms: ["dunya", "dünya", "world", "avrupa", "abd", "iran", "israil", "gazze", "rusya", "ukrayna", "lubnan", "lübnan"] },
+  { value: "Gündem", terms: ["gundem", "gündem", "turkiye", "türkiye", "son-dakika", "son dakika", "politika"] },
+];
 
 function decodeText(value = "") {
   return value
@@ -53,6 +63,26 @@ function normalizeUrl(url, baseUrl = "") {
   }
 }
 
+function normalizeForMatch(value = "") {
+  return decodeText(value)
+    .toLocaleLowerCase("tr-TR")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ı/g, "i");
+}
+
+function inferCategory(rawCategory, link, title, fallback) {
+  const haystack = normalizeForMatch(`${rawCategory} ${link} ${title}`);
+
+  for (const category of CATEGORY_ALIASES) {
+    if (category.terms.some((term) => haystack.includes(normalizeForMatch(term)))) {
+      return category.value;
+    }
+  }
+
+  return fallback;
+}
+
 function isLikelyImageUrl(url) {
   return Boolean(url) && !/logo|favicon|sprite/i.test(url);
 }
@@ -82,6 +112,10 @@ function getItemLink(block) {
   if (directLink) return directLink;
 
   return getAttr(block, "link", "href") || getTag(block, "id") || getTag(block, "guid");
+}
+
+function getItemCategory(block) {
+  return getTag(block, "category") || getAttr(block, "category", "term");
 }
 
 function parseDate(block) {
@@ -145,6 +179,7 @@ function parseXML(xml, feed) {
     const diffMin = Math.floor((now - date) / 60000);
     const diffHour = Math.floor(diffMin / 60);
     const image = firstImageUrl(block, link || feed.url);
+    const category = inferCategory(getItemCategory(block), link, title, feed.category);
 
     if (!title || !link) continue;
 
@@ -158,7 +193,7 @@ function parseXML(xml, feed) {
       id: `${feed.source}-${id++}`,
       title: title.substring(0, 120),
       summary: description.substring(0, 300),
-      category: feed.category,
+      category,
       date: displayDate,
       pubDate: date.getTime(),
       image,
