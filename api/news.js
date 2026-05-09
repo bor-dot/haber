@@ -537,18 +537,69 @@ export default async function handler(req, res) {
   try {
     const results = await Promise.allSettled(
       FEEDS.map(async (feed) => {
-        const response = await fetch(feed.url, {
-          headers: REQUEST_HEADERS,
-          signal: AbortSignal.timeout(5000),
-        });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const raw = await response.text();
-        if (feed.type === "html") return parseHTML(raw, feed);
-        if (feed.type === "jina") return parseJinaMarkdown(raw, feed);
-        return parseXML(raw, feed);
+        try {
+          // Node.js uyumluluğu için kurşun geçirmez zaman aşımı (Timeout) mekanizması
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+          const response = await fetch(feed.url, {
+            headers: REQUEST_HEADERS,
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const raw = await response.text();
+          
+          if (feed.type === "html") return parseHTML(raw, feed);
+          if (feed.type === "jina") return parseJinaMarkdown(raw, feed);
+          return parseXML(raw, feed);
+        } catch (e) {
+          // Kaynak çökerse tüm API'yi yıkmasını engelliyoruz
+          console.error(`[${feed.source}] Kaynağı Atlandı:`, e.message);
+          return []; 
+        }
       })
     );
 
+    let allNews = [];
+    results.forEach((result) => {
+      if (result.status === "fulfilled" && Array.isArray(result.value)) {
+        allNews.push(...result.value);
+      }
+    });
+
+    // Bozuk tarihlerin sistemi çökertmesini engelleyerek güvenli sıralama yapıyoruz
+    allNews.sort((a, b) => {
+      const dateA = new Date(a.date);
+      const dateB = new Date(b.date);
+      const timeA = isNaN(dateA.getTime()) ? 0 : dateA.getTime();
+      const timeB = isNaN(dateB.getTime()) ? 0 : dateB.getTime();
+      return timeB - timeA;
+    });
+
+    // KRİTİK NOKTA: Bozuk tarihleri (Invalid Date) anında tedavi ediyoruz
+    const formattedNews = allNews.slice(0, 100).map((item, index) => {
+      let safeDate = new Date(item.date);
+      
+      // Eğer teknoloji sitesinden gelen tarih hatalıysa çökme, şu anı ata
+      if (isNaN(safeDate.getTime())) {
+        safeDate = new Date();
+      }
+
+      return {
+        ...item,
+        id: index + 1,
+        date: formatDisplayDate(safeDate),
+      };
+    });
+
+    res.status(200).json({ news: formattedNews });
+  } catch (error) {
+    console.error("API Genel Hatası:", error);
+    res.status(500).json({ error: error.message, news: [] });
+  }
+}
     const allNews = [];
     results.forEach((result) => {
       if (result.status === "fulfilled") allNews.push(...result.value);
