@@ -456,11 +456,8 @@ export default function App() {
                     : "0.5px 0.5px 1px rgba(255, 255, 255, 0.8), -0.5px -0.5px 1px rgba(0, 0, 0, 0.2)",
                 }}
               >
-                <div className="pl-6 flex items-center"> 
-  <span className="font-semibold text-2xl tracking-tighter lowercase italic">
-    son<span className="text-orange-600">arat</span>
-  </span>
-</div>
+                <span className="font-extrabold text-2xl tracking-tighter uppercase italic">
+  SON<span className="text-orange-600">ARAT</span>
 </span>
                 <span className="flex h-3 w-3 relative mb-4">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
