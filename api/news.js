@@ -11,7 +11,7 @@ const FEEDS = [
   { source: "Haber Türk", category: "Gündem", url: "https://www.haberturk.com/rss" },
   { source: "TRT Haber", category: "Gündem", url: "https://www.trthaber.com/sondakika.rss" },
   { source: "AA Bilim", category: "Bilim", url: "https://www.aa.com.tr/tr/rss/default?cat=bilim-teknoloji" },
-  { source: "Diken", category: "Gündem", url: "https://www.diken.com.tr", type: "html" },
+  { source: "Diken", category: "Gündem", url: "https://r.jina.ai/http://https://www.diken.com.tr/feed/", type: "jina" },
   { source: "bianet", category: "Gündem", url: "https://bianet.org/bianet.rss" },
   { source: "DW Türkçe", category: "Dünya", url: "https://rss.dw.com/xml/rss-tur-all" },
   { source: "T24", category: "Gündem", url: "https://t24.com.tr", type: "html" },
@@ -148,6 +148,18 @@ function normalizeUrl(url, baseUrl = "") {
     return new URL(clean, baseUrl || undefined).toString();
   } catch {
     return null;
+  }
+}
+
+function stripTrackingParams(url) {
+  try {
+    const parsed = new URL(url);
+    for (const key of [...parsed.searchParams.keys()]) {
+      if (key.startsWith("utm_")) parsed.searchParams.delete(key);
+    }
+    return parsed.toString();
+  } catch {
+    return url;
   }
 }
 
@@ -363,6 +375,61 @@ function parseHTML(html, feed) {
   return items;
 }
 
+function parseJinaDate(segment, fallbackOffset) {
+  const rawDate = segment.match(/\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s+\d{1,2}\s+[A-Z][a-z]{2}\s+\d{4}\s+\d{2}:\d{2}:\d{2}\s+[+-]\d{4}\b/)?.[0];
+  const fallback = new Date(Date.now() - fallbackOffset * 60000);
+  if (!rawDate) return fallback;
+
+  const date = new Date(rawDate);
+  return Number.isNaN(date.getTime()) ? fallback : date;
+}
+
+function parseJinaMarkdown(markdown, feed) {
+  const maxItems = HTML_FEED_RULES[feed.source]?.maxItems || 20;
+  const headingRegex = /^#{2,4}\s+\[([^\]]+)\]\((https?:\/\/[^)\s]+)[^)]*\)/gm;
+  const matches = [...markdown.matchAll(headingRegex)];
+  const items = [];
+  const seenUrls = new Set();
+  const seenTitles = new Set();
+  let id = 0;
+
+  for (let index = 0; index < matches.length && items.length < maxItems; index += 1) {
+    const rawTitle = matches[index][1];
+    const rawLink = matches[index][2];
+    const link = stripTrackingParams(normalizeUrl(rawLink, feed.url) || "");
+
+    if (!isAllowedHtmlUrl(link, feed)) continue;
+    if (seenUrls.has(link)) continue;
+
+    const title = cleanHtmlTitle(rawTitle);
+    const titleKey = normalizeForMatch(title);
+    if (!title || seenTitles.has(titleKey) || !isUsefulHtmlTitle(title)) continue;
+
+    const nextIndex = matches[index + 1]?.index ?? markdown.length;
+    const segment = markdown.slice(matches[index].index, nextIndex);
+    const date = parseJinaDate(segment, items.length);
+    const category = inferCategory("", link, title, feed.category);
+
+    seenUrls.add(link);
+    seenTitles.add(titleKey);
+
+    items.push({
+      id: `${feed.source}-${id++}`,
+      title: title.substring(0, 120),
+      summary: title.substring(0, 300),
+      category,
+      date: formatDisplayDate(date),
+      pubDate: date.getTime(),
+      image: null,
+      source: feed.source,
+      url: link,
+      isNew: Date.now() - date.getTime() < 30 * 60000,
+    });
+  }
+
+  return items;
+}
+
 async function fetchArticleImage(url) {
   if (!url) return null;
 
@@ -452,7 +519,9 @@ export default async function handler(req, res) {
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const raw = await response.text();
-        return feed.type === "html" ? parseHTML(raw, feed) : parseXML(raw, feed);
+        if (feed.type === "html") return parseHTML(raw, feed);
+        if (feed.type === "jina") return parseJinaMarkdown(raw, feed);
+        return parseXML(raw, feed);
       })
     );
 
