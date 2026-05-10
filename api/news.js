@@ -16,6 +16,16 @@ const FEEDS = [
   { source: "DW Türkçe", category: "Dünya", url: "https://rss.dw.com/xml/rss-tur-all" },
   { source: "T24", category: "Gündem", url: "https://t24.com.tr", type: "html" },
   { source: "Gazete Oksijen", category: "Gündem", url: "https://www.gazeteoksijen.com", type: "html" },
+  { source: "Webtekno", category: "Teknoloji", url: "https://www.webtekno.com/rss.xml" },
+  { source: "DonanımHaber", category: "Teknoloji", url: "https://www.donanimhaber.com/rss/tum/" },
+  { source: "ShiftDelete.Net", category: "Teknoloji", url: "https://shiftdelete.net/feed" },
+  { source: "CHIP Online", category: "Teknoloji", url: "https://www.chip.com.tr/rss" },
+  { source: "TÜBİTAK", category: "Teknoloji", url: "https://tubitak.gov.tr/tr/rss.xml" },
+  { source: "Evrim Ağacı", category: "Bilim", url: "https://evrimagaci.org/rss.xml" },
+  { source: "Arkeofili", category: "Bilim", url: "https://arkeofili.com/feed/" },
+  { source: "Scientific American", category: "Bilim", url: "https://www.scientificamerican.com/platform/syndication/rss/" },
+  { source: "Fizikist", category: "Bilim", url: "https://fizikist.com/feed/" },
+  { source: "Onedio", category: "Yaşam", url: "https://onedio.com/yasam", type: "jsonld" },
 ];
 
 const REQUEST_HEADERS = {
@@ -24,10 +34,10 @@ const REQUEST_HEADERS = {
 
 const CATEGORY_ALIASES = [
   { value: "Ekonomi", terms: ["ekonomi", "finans", "gram altin", "gram altın", "ceyrek altin", "çeyrek altın", "altin fiyat", "altın fiyat", "borsa", "para", "emekli", "sgk"] },
-  { value: "Teknoloji", terms: ["teknoloji", "bilisim", "bilişim", "yapay-zeka", "yapay zeka", "siber"] },
+  { value: "Teknoloji", terms: ["teknoloji", "technology", "tech", "bilisim", "bilişim", "yapay-zeka", "yapay zeka", "siber", "webtekno", "donanimhaber", "donanımhaber", "shiftdelete", "chip", "tubitak", "tübitak"] },
   { value: "Spor", terms: ["spor", "futbol", "basketbol", "galatasaray", "fenerbahce", "fenerbahçe", "besiktas", "beşiktaş", "trabzonspor", "super-lig", "süper lig", "okçu", "okçuluk"] },
-  { value: "Yaşam", terms: ["yasam", "yaşam", "saglik", "sağlık", "kultur", "kültür", "kultur-sanat", "kültür-sanat", "magazin", "seyahat", "gastronomi", "sinema", "ekran", "ajanda", "anne"] },
-  { value: "Bilim", terms: ["bilim", "bilim-teknoloji", "bilim-ve-teknoloji", "uzay", "savunma", "arastirma", "araştırma"] },
+  { value: "Yaşam", terms: ["yasam", "yaşam", "saglik", "sağlık", "kultur", "kültür", "kultur-sanat", "kültür-sanat", "magazin", "seyahat", "gastronomi", "sinema", "ekran", "ajanda", "anne", "onedio"] },
+  { value: "Bilim", terms: ["bilim", "science", "scientific", "bilim-teknoloji", "bilim-ve-teknoloji", "uzay", "savunma", "arastirma", "araştırma", "evrim", "arkeoloji", "fizik"] },
   { value: "Dünya", terms: ["dunya", "dünya", "world", "avrupa", "abd", "iran", "israil", "gazze", "rusya", "ukrayna", "lubnan", "lübnan", "new-york-times", "financial-times", "the-economist", "the-athletic"] },
   { value: "Gündem", terms: ["gundem", "gündem", "turkiye", "türkiye", "son-dakika", "son dakika", "politika"] },
 ];
@@ -63,6 +73,11 @@ const HTML_FEED_RULES = {
       "/the-economist/",
       "/the-athletic/",
     ],
+    maxItems: 24,
+  },
+  Onedio: {
+    host: "onedio.com",
+    include: ["/haber/"],
     maxItems: 24,
   },
 };
@@ -430,6 +445,79 @@ function parseJinaMarkdown(markdown, feed) {
   return items;
 }
 
+function normalizeJsonLdNodes(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.flatMap(normalizeJsonLdNodes);
+  if (typeof value !== "object") return [];
+
+  const nodes = [value];
+  if (value["@graph"]) nodes.push(...normalizeJsonLdNodes(value["@graph"]));
+  if (value.itemListElement) nodes.push(...normalizeJsonLdNodes(value.itemListElement.map((entry) => entry.item || entry)));
+  return nodes;
+}
+
+function getJsonLdImage(node) {
+  const image = node.image;
+  if (typeof image === "string") return image;
+  if (Array.isArray(image)) return typeof image[0] === "string" ? image[0] : image[0]?.url;
+  return image?.url || null;
+}
+
+function parseJsonLdHTML(html, feed) {
+  const scripts = [...html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)];
+  const items = [];
+  const seenUrls = new Set();
+  const seenTitles = new Set();
+  const maxItems = HTML_FEED_RULES[feed.source]?.maxItems || 20;
+  let id = 0;
+
+  for (const script of scripts) {
+    let data;
+    try {
+      data = JSON.parse(decodeText(script[1]));
+    } catch {
+      continue;
+    }
+
+    for (const node of normalizeJsonLdNodes(data)) {
+      const type = Array.isArray(node["@type"]) ? node["@type"].join(" ") : node["@type"];
+      if (!/NewsArticle|Article|BlogPosting/i.test(String(type || ""))) continue;
+
+      const title = cleanHtmlTitle(node.headline || node.name || "");
+      const link = normalizeUrl(node.url || node.mainEntityOfPage?.["@id"] || node.mainEntityOfPage, feed.url);
+      const titleKey = normalizeForMatch(title);
+      if (!title || !link || !isAllowedHtmlUrl(link, feed)) continue;
+      if (seenUrls.has(link) || seenTitles.has(titleKey)) continue;
+
+      const date = node.datePublished ? new Date(node.datePublished) : new Date(Date.now() - items.length * 60000);
+      const safeDate = Number.isNaN(date.getTime()) ? new Date(Date.now() - items.length * 60000) : date;
+      const summary = stripTags(node.description || title).substring(0, 300);
+      const image = normalizeUrl(getJsonLdImage(node), link || feed.url);
+      const category = inferCategory("", link, title, feed.category);
+
+      seenUrls.add(link);
+      seenTitles.add(titleKey);
+
+      items.push({
+        id: `${feed.source}-${id++}`,
+        title: title.substring(0, 120),
+        summary,
+        category,
+        date: formatDisplayDate(safeDate),
+        pubDate: safeDate.getTime(),
+        image,
+        source: feed.source,
+        url: link,
+        isNew: Date.now() - safeDate.getTime() < 30 * 60000,
+      });
+
+      if (items.length >= maxItems) return items;
+    }
+  }
+
+  return items.length ? items : parseHTML(html, feed);
+}
+
 async function fetchArticleImage(url) {
   if (!url) return null;
 
@@ -492,7 +580,7 @@ function parseXML(xml, feed) {
 }
 
 async function enrichMissingImages(items) {
-  const missing = items.filter((item) => !item.image).slice(0, 12);
+  const missing = items.filter((item) => !item.image).slice(0, 16);
   if (missing.length === 0) return;
 
   const images = await Promise.allSettled(
@@ -521,6 +609,7 @@ export default async function handler(req, res) {
         const raw = await response.text();
         if (feed.type === "html") return parseHTML(raw, feed);
         if (feed.type === "jina") return parseJinaMarkdown(raw, feed);
+        if (feed.type === "jsonld") return parseJsonLdHTML(raw, feed);
         return parseXML(raw, feed);
       })
     );
