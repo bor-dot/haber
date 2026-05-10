@@ -1,8 +1,10 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
+import './latestSeeAllPriorityFix';
 import './categoryScrollFix';
 import './categoryViewLightFix';
 import './latestSeeAllFix';
+import './logoArchFix';
 import './turkishTextFix';
 import './detailSummaryFix';
 import App from './App.tsx';
