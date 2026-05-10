@@ -30,7 +30,11 @@ const FEEDS = [
 
 const REQUEST_HEADERS = {
   "User-Agent": "Mozilla/5.0 (compatible; SonaratBot/1.0)",
+  "Cache-Control": "no-cache",
+  Pragma: "no-cache",
 };
+
+const MAX_NEWS_ITEMS = 260;
 
 const CATEGORY_ALIASES = [
   { value: "Ekonomi", terms: ["ekonomi", "finans", "gram altin", "gram altın", "ceyrek altin", "çeyrek altın", "altin fiyat", "altın fiyat", "borsa", "para", "emekli", "sgk"] },
@@ -329,7 +333,19 @@ function isUsefulHtmlTitle(title) {
   return true;
 }
 
-function parseHtmlDate(markup, fallbackOffset) {
+function parseHtmlDate(markup) {
+  const timeAttrs = markup.match(/<time\b([^>]*)>/i)?.[1] || "";
+  const attrDate = getHtmlAttr(timeAttrs, "datetime") || getHtmlAttr(timeAttrs, "dateTime");
+  const metaDate =
+    markup.match(/(?:datePublished|dateModified)["']?\s*[:=]\s*["']([^"']+)["']/i)?.[1] ||
+    markup.match(/<meta[^>]+(?:property|name)=["'](?:article:published_time|publishdate|date)["'][^>]+content=["']([^"']+)["']/i)?.[1];
+  const rawDate = attrDate || metaDate;
+
+  if (rawDate) {
+    const date = new Date(rawDate);
+    if (!Number.isNaN(date.getTime())) return date;
+  }
+
   const text = stripTags(markup);
   const timeMatch = text.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
 
@@ -340,7 +356,7 @@ function parseHtmlDate(markup, fallbackOffset) {
     return date;
   }
 
-  return new Date(Date.now() - fallbackOffset * 60000);
+  return null;
 }
 
 function parseHTML(html, feed) {
@@ -366,7 +382,8 @@ function parseHTML(html, feed) {
 
     if (!title || seenTitles.has(titleKey)) continue;
 
-    const date = parseHtmlDate(markup, items.length);
+    const parsedDate = parseHtmlDate(markup);
+    const date = parsedDate || new Date(Date.now() - (360 + items.length) * 60000);
     const category = inferCategory("", link, title, feed.category);
     const image = firstImageUrl(markup, link || feed.url);
 
@@ -378,12 +395,12 @@ function parseHTML(html, feed) {
       title: title.substring(0, 120),
       summary: title.substring(0, 300),
       category,
-      date: formatDisplayDate(date),
+      date: parsedDate ? formatDisplayDate(date) : "GÜNCEL",
       pubDate: date.getTime(),
       image,
       source: feed.source,
       url: link,
-      isNew: Date.now() - date.getTime() < 30 * 60000,
+      isNew: Boolean(parsedDate && Date.now() - date.getTime() < 30 * 60000),
     });
   }
 
@@ -392,7 +409,7 @@ function parseHTML(html, feed) {
 
 function parseJinaDate(segment, fallbackOffset) {
   const rawDate = segment.match(/\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),\s+\d{1,2}\s+[A-Z][a-z]{2}\s+\d{4}\s+\d{2}:\d{2}:\d{2}\s+[+-]\d{4}\b/)?.[0];
-  const fallback = new Date(Date.now() - fallbackOffset * 60000);
+  const fallback = new Date(Date.now() - (360 + fallbackOffset) * 60000);
   if (!rawDate) return fallback;
 
   const date = new Date(rawDate);
@@ -594,9 +611,22 @@ async function enrichMissingImages(items) {
   });
 }
 
+function stableNumericId(item) {
+  const value = `${item.source}|${item.url || item.title}`;
+  let hash = 5381;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) + hash) ^ value.charCodeAt(index);
+  }
+
+  return Math.abs(hash) || 1;
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Cache-Control", "no-store, max-age=0");
+  res.setHeader("Cache-Control", "no-store, no-cache, max-age=0, must-revalidate");
+  res.setHeader("CDN-Cache-Control", "no-store");
+  res.setHeader("Vercel-CDN-Cache-Control", "no-store");
 
   try {
     const results = await Promise.allSettled(
@@ -604,6 +634,7 @@ export default async function handler(req, res) {
         const response = await fetch(feed.url, {
           headers: REQUEST_HEADERS,
           signal: AbortSignal.timeout(5000),
+          cache: "no-store",
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const raw = await response.text();
@@ -622,7 +653,10 @@ export default async function handler(req, res) {
     allNews.sort((a, b) => b.pubDate - a.pubDate);
     await enrichMissingImages(allNews);
 
-    const numbered = allNews.map((item, idx) => ({ ...item, id: idx + 1 }));
+    const numbered = allNews.slice(0, MAX_NEWS_ITEMS).map((item) => ({
+      ...item,
+      id: stableNumericId(item),
+    }));
     const categoryCounts = numbered.reduce((counts, item) => {
       counts[item.category] = (counts[item.category] || 0) + 1;
       return counts;
