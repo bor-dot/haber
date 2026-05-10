@@ -10,6 +10,7 @@ import './latestSeeAllFix';
 import './logoArchFix';
 import './logoMarkModernFix';
 import './liveWidgetsFix';
+import './mobileCategoryNavFix';
 import './turkishTextFix';
 import './detailSummaryFix';
 import App from './App.tsx';
