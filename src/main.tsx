@@ -9,6 +9,7 @@ import './categoryViewLightFix';
 import './latestSeeAllFix';
 import './logoArchFix';
 import './logoMarkModernFix';
+import './liveWidgetsFix';
 import './turkishTextFix';
 import './detailSummaryFix';
 import App from './App.tsx';
