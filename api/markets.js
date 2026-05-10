@@ -69,15 +69,48 @@ async function currencyQuotes() {
 }
 
 async function bitcoinQuote() {
+  const sources = [binanceBitcoinQuote, btcturkBitcoinQuote, coingeckoBitcoinQuote];
+  let lastError = null;
+
+  for (const source of sources) {
+    try {
+      return await source();
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error("Bitcoin quote unavailable");
+}
+
+async function binanceBitcoinQuote() {
   const data = await fetchJson("https://api.binance.com/api/v3/ticker/24hr?symbol=BTCTRY");
+  return bitcoinPayload(Number(data.lastPrice), Number(data.priceChangePercent), data.closeTime);
+}
+
+async function btcturkBitcoinQuote() {
+  const data = await fetchJson("https://api.btcturk.com/api/v2/ticker?pairSymbol=BTCTRY");
+  const quote = data.data?.[0] || {};
+  return bitcoinPayload(Number(quote.last), Number(quote.dailyPercent), quote.timestamp);
+}
+
+async function coingeckoBitcoinQuote() {
+  const data = await fetchJson(
+    "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=try&include_24hr_change=true&include_last_updated_at=true",
+  );
+  const quote = data.bitcoin || {};
+  return bitcoinPayload(Number(quote.try), Number(quote.try_24h_change), Number(quote.last_updated_at) * 1000);
+}
+
+function bitcoinPayload(value, changePercent, timestamp) {
   return {
     key: "btc",
     label: "Bitcoin",
     symbol: "BTC/TRY",
-    value: Number(data.lastPrice),
-    changePercent: Number(data.priceChangePercent),
+    value,
+    changePercent,
     currency: "TRY",
-    updatedAt: data.closeTime ? new Date(Number(data.closeTime)).toISOString() : null,
+    updatedAt: timestamp ? new Date(Number(timestamp)).toISOString() : null,
   };
 }
 
